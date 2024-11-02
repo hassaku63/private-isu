@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,8 +26,9 @@ import (
 )
 
 var (
-	db    *sqlx.DB
-	store *gsm.MemcacheStore
+	db       *sqlx.DB
+	store    *gsm.MemcacheStore
+	ImageDir = filepath.Join("..", "public", "image")
 )
 
 const (
@@ -614,15 +616,19 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := ""
+	ext := ""
 	if file != nil {
 		// 投稿のContent-Typeからファイルのタイプを決定する
 		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
 			mime = "image/jpeg"
+			ext = "jpg"
 		} else if strings.Contains(contentType, "png") {
 			mime = "image/png"
+			ext = "png"
 		} else if strings.Contains(contentType, "gif") {
 			mime = "image/gif"
+			ext = "gif"
 		} else {
 			session := getSession(r)
 			session.Values["notice"] = "投稿できる画像形式はjpgとpngとgifだけです"
@@ -653,7 +659,8 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		query,
 		me.ID,
 		mime,
-		filedata,
+		// filedata,
+		[]byte{},
 		r.FormValue("body"),
 	)
 	if err != nil {
@@ -662,6 +669,13 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pid, err := result.LastInsertId()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	filePath := filepath.Join(ImageDir, fmt.Sprintf("%d.%s", pid, ext))
+	err = os.WriteFile(filePath, filedata, 0644)
 	if err != nil {
 		log.Print(err)
 		return
@@ -696,6 +710,14 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 			log.Print(err)
 			return
 		}
+		return
+	}
+
+	// データベースから Blog で取得した画像を ImageDir 以下に保存する
+	filePath := filepath.Join(ImageDir, fmt.Sprintf("%d.%s", pid, ext))
+	err = os.WriteFile(filePath, post.Imgdata, 0644)
+	if err != nil {
+		log.Print(err)
 		return
 	}
 
